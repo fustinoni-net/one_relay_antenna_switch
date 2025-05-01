@@ -1,0 +1,98 @@
+esphome:
+  name: antenna-switch
+
+esp32:
+  board: esp32doit-devkit-v1
+  framework:
+    type: arduino
+
+globals:
+  - id: last_used_profile_id
+    type: std::string
+    initial_value: '"initial_value"'
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+#api:
+#  password: ""
+
+ota:
+  - platform: esphome
+    password: ""
+
+wifi:
+  # You can set up your wifi data here, or use the fallback hotspot to set up it over wifi later.
+  #ssid: "YOUR_SSID"
+  #password: "YOUR_PASSWORD"
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "antenna-switch"
+    #password: "12345678"
+
+captive_portal:
+
+web_server:
+  port: 80
+  version: 3
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal Sensor"
+    update_interval: 30s
+
+
+switch:
+  - platform: shutdown
+    name: "Shutdown"
+    id: box_shutdown
+
+  - platform: gpio
+    id: "antenna"
+    name: "Antenna switch 1/2"
+    icon: "mdi:antenna"
+    pin: 12
+    restore_mode: ALWAYS_OFF
+
+  - platform: template
+    id: "owrx_enable"
+    name: "Controllato da OWRX"
+    restore_mode: ALWAYS_ON
+    optimistic: true
+    icon: "mdi:remote"
+
+
+mqtt:
+  broker: "your_mqtt_broker_ip"
+  username: "your_mqtt_username"
+  password: "you_mqtt_password"
+  birth_message:
+    topic: box/status
+    payload: online
+  will_message:
+    topic: box/status
+    payload: offline
+  on_message:
+   - topic: box/open_close
+     then:
+      - switch.turn_on: antenna
+
+  on_json_message:
+    topic: openwebrx/RX
+    then:
+      - lambda: |-
+          if ( id(owrx_enable).state){
+            if ( x.containsKey("source_id") && x["source_id"] == "rtlsdr") {
+              if (x.containsKey("profile_id") && strstr(x["profile_id"], "antenna_1") != NULL) {
+                id(last_used_profile_id) = std::string(x["profile_id"].as<const char*>());
+                id(antenna).turn_on();
+              } else {
+                id(antenna).turn_off();
+              }
+              if (x.containsKey("state") && strstr(x["state"], "Running") != NULL && id(last_used_profile_id).find("antenna_1") != std::string::npos) {
+                id(antenna).turn_on();
+              }
+            }
+          }
